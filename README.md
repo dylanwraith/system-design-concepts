@@ -50,14 +50,49 @@ Writes are more costly since they are all on disc. In addition, each block can o
 ## A.C.I.D. Transactions
 Good to strive for because they provide high data reliability and integrity. Most of this can be achieved using a write-ahead log, but Isolation is a bit more tricky. It is common to be a bit more relaxed in systems when striving for Isolation.
 
-#### Atomicity
+### Atomicity
 All-or-nothing. Either the entirety of a database transaction will succeed, or nothing at all.
 
-#### Consistency
+### Consistency
 When failures occur, they do so gracefully. Failures should not result in invalid data, or broken data invariants.
 
-#### Isolation
+### Isolation
 Transactions should appear to occur independently of one another. Essentially, prevent race conditions and dead locks.
 
-#### Durability
+### Durability
 Committed writes should never be lost.
+
+## Read Committed Isolation
+This level of isolation is acheived by protecting against Dirty Reads and Dirty Writes.
+
+### Dirty Reads
+This occurs when uncommited values are read.
+
+#### Example
+Say you have 2 transactions, T1 and T2. T1 updates `accountBalance` from $90 to $100. Immediately after, T2 reads `accountBalance` to be $100 and returns it to the server. T1 has yet to commit the update to `accountBalance` and fails, resulting in `accountBalance` being rolled back to $90. T2 did a dirty read since it read the uncommitted value of $100.
+
+#### How to prevent it
+
+##### Row Locking
+If T1 had locked the row associated to `accountBalance`, it would have prevented all other transactions from using the row until T1 was complete, whether that be by failure or success and all writes were committed. This would slow down the system because only one transaction could use a row at a time.
+
+##### Snapshot Isolation
+An alternative to row locking is called snapshot isolation, essentially keeping a history of values when doing updates. This would have allowed T2 to read the old value of $90 since $100 was not yet committed, preventing the dirty read altogether.
+
+### Dirty Writes
+This occurs when uncommitted values are overwritten.
+
+#### Example
+Say you have 2 transactions, T1 and T2. T1's instructions are to update `favoriteColor=blue` and `favoriteFood=pizza`. T2's instructions are to update `favoriteColor=green` and `favoriteFood=cake`. These transactions run concurrently and are executed in the following order:
+1. T1 sets `favoriteColor=blue`
+2. T2 sets `favoriteColor=green`
+3. T2 sets `favoriteFood=cake`
+4. T1 sets `favoriteFood=pizza`
+5. T1 and T2 are committed
+
+This race condition would result in the end values being `favoriteFood=pizza` (T1) and `favoirteColor=green` (T2), which are not valid. We should have either ended with T1's values, or T2's values, not a combination of the 2.
+
+#### How to prevent it
+
+##### Row Locking
+If T1 had locked the rows associated to `favoriteFood` and `favoirteColor`, it would have prevented all other transactions from using the row until T1 was complete, whether that be by failure or success and all writes were committed. Effectively, T1 would have executed, committed, then T2 would have executed, committed, and the final result would be all of T2's values being present. This would slow down the system because only one transaction could use a row at a time, but the race conditions would have been prevented.
