@@ -46,3 +46,18 @@ Writes are more costly since they are all on disc. In addition, each block can o
 
 #### Cons:
 * Writes are inefficient -- all writes happen on disc and can cause need for rebalancing of tree which is expensive
+
+## A.C.I.D. Transactions
+Good to strive for because they provide high data reliability and integrity. Most of this can be achieved using a write-ahead log, but Isolation is a bit more tricky. It is common to be a bit more relaxed in systems when striving for Isolation.
+
+#### Atomicity
+All-or-nothing. Either the entirety of a database transaction will succeed, or nothing at all.
+
+#### Consistency
+When failures occur, they do so gracefully. Failures should not result in invalid data, or broken data invariants.
+
+#### Isolation
+Transactions should appear to occur independently of one another. Essentially, prevent race conditions and dead locks.
+
+#### Durability
+Committed writes should never be lost.
