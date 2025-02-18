@@ -28,6 +28,10 @@ _An educational repository documenting system design studies_
     - [Example](#example-1)
     - [How to prevent it](#how-to-prevent-it-1)
       - [Row Locking](#row-locking-1)
+- [2 Phase Locking](#2-phase-locking)
+  - [Race Conditions](#race-conditions)
+  - [Predicate Locking](#predicate-locking)
+  - [Index Range Locking](#index-range-locking)
 
 ## Database Index Implementations
 
@@ -123,3 +127,27 @@ This race condition would result in the end values being `favoriteFood=pizza` (T
 
 ##### Row Locking
 If T1 had locked the rows associated to `favoriteFood` and `favoirteColor`, it would have prevented all other transactions from using the row until T1 was complete, whether that be by failure or success and all writes were committed. Effectively, T1 would have executed, committed, then T2 would have executed, committed, and the final result would be all of T2's values being present. This would slow down the system because only one transaction could use a row at a time, but the race conditions would have been prevented.
+
+## 2 Phase Locking
+This is a Pessimistic Concurrency Control protocol, meaning we will end up pessimistically locking more rows than needed to prevent race conditions.
+
+This is implemented using 2 locks per resource:
+1. A shared reader lock. This can be used by multiple transactions at once, helping optimize reads. As long as the row is not being written to, reads can occur.
+2. An exclusive writer lock. This can only be used by a single transaction at a time. In order for a write to occur, all reads on the resource must be complete. This wait for potentially multiple transaction executing reads on the resource can negatively impact performance of writes.
+
+### Race Conditions
+Deadlocks can occur if concurrent transactions lock each other's resources and end up endlessly waiting for one another. The database will need to have a mechanism to identify and remedy these.
+
+Phantom writes can occur, but can be prevented through Predicate Locking and Index Range Locking.
+
+### Predicate Locking
+
+Transactions provide a predicate to determine which rows to lock, essentially a filter. This could mean locking all rows that are `type=manager` and `shift=night`. By locking all rows satisifying the predicate, we can ensure that rows generated to materialize conflicts are also locked, preventing phantom writes.
+
+Because locks are expensive, and we are locking more rows than needed, this can have a significantly negative impact on performance.
+
+### Index Range Locking
+
+This is essentially the same as predicate locking, except we only account for the indexed portion of the predicate. So, say only `type` was indexed in the prior example, we would end up locking all rows where `type=manager`, regardless of their `shift` value. This will result in more rows being locked, but they are locked much more quickly because the rows are indexed. Essentially, lookups are done in logarithmic time rather than linear time.
+
+There are trade-offs between predicate locking and index range locking, and each could have its place in a given system. Neither is a clear winner.
