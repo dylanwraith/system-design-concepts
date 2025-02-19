@@ -51,6 +51,8 @@ _An educational repository documenting system design studies_
   - [Notable Downsides](#notable-downsides)
   - [Column Compression](#column-compression)
   - [Predicate Pushdown](#predicate-pushdown)
+- [Serialization Frameworks](#serialization-frameworks)
+  - [Examples](#examples)
 
  
 
@@ -338,3 +340,27 @@ See Apache Parquet for an example implementation of this.
 This adds metrics to data chunks to optimize queries. These can includes helpful values such as max, min, average, sum, etc.
 
 For example, say you are trying to fetch all ages that are greater than 60. This would normally involve doing a linear scan through your database, potentially 1000s of data chunks with 1000s of values in each chunk. However, if your data chunks have the max value stored on them, then you can skip any chunks where the max value is under 60, since you are only fetching values over 60! This can have a huge positive impact on performance if a majority of your users are under 60.
+
+
+
+## Serialization Frameworks
+
+These are used to minimize the amount of data being passed over network and stored on-disc via serialization of column names, providing significant improvements to performance
+
+Serialization and deserialization of data when communicating with the database introduces a small performance hit, but it is almost always worth the trade-off.
+
+As a result, column names are no longer human-readable after being serialized.
+
+### Examples
+
+Google Protocol Buffers and Apache Thrift are 2 popular frameworks.
+
+They both require knowledge of the schema at compile time, so they do not deal well with schema changes on-the-fly.
+
+The schema provides a mapping of column name to unique identifier, allowing for serialization and deserialization.
+
+Apache Avor is another popular framework that is a bit less rigid.
+
+Avor Schemas are provided by servers when communicating with the database and stored in an Avor Schema Table, allowing for on-the-fly schema changes.
+
+When reading values from the database, Avor will fetch the data and utilize the provided schema to keep expected values, toss unexpected values, and auto-populated missing values with schema-provided default values.
