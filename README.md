@@ -1,7 +1,7 @@
-# system-design-concepts
+# System Design Concepts
 _An educational repository documenting system design studies_
 
-# Table of Contents
+## Table of Contents
 
 - [Database Index Implementations](#database-index-implementations)
   - [Hash Index](#hash-index)
@@ -28,12 +28,21 @@ _An educational repository documenting system design studies_
     - [Example](#example-1)
     - [How to prevent it](#how-to-prevent-it-1)
       - [Row Locking](#row-locking-1)
-- [2 Phase Locking](#2-phase-locking)
+- [Snapshot Isolation](#snapshot-isolation-1)
+  - [Implementation](#implementation)
+- [Read Skew](#read-skew)
+  - [Example](#example-2)
+- [Write Skew](#write-skew)
+  - [Example](#example-3)
+- [Phantom Writes](#phantom-writes)
+  - [Example](#example-4)
+- [Materializing Conflicts](#materializing-conflicts)
+- [2 Phase Locking (2PL)](#2-phase-locking)
   - [Race Conditions](#race-conditions)
   - [Predicate Locking](#predicate-locking)
   - [Index Range Locking](#index-range-locking)
-- [Serializable Snapshot Isolation](#serializable-snapshot-isolation)
-  - [Example](#example-2)
+- [Serializable Snapshot Isolation (SSI)](#serializable-snapshot-isolation)
+  - [Example](#example-5)
 - [2PL vs SSI](#2pl-vs-ssi)
 
 ## Database Index Implementations
@@ -130,6 +139,83 @@ This race condition would result in the end values being `favoriteFood=pizza` (T
 
 ##### Row Locking
 If T1 had locked the rows associated to `favoriteFood` and `favoirteColor`, it would have prevented all other transactions from using the row until T1 was complete, whether that be by failure or success and all writes were committed. Effectively, T1 would have executed, committed, then T2 would have executed, committed, and the final result would be all of T2's values being present. This would slow down the system because only one transaction could use a row at a time, but the race conditions would have been prevented.
+
+## Snapshot Isolation
+
+This is effectively the process of storing old database values to prevent race conditions.
+
+### Implementation
+
+A monotonic stack is used to incrementally assign Transaction IDs to transactions.
+
+Whenever a value is written to the DB, a Transaction ID is associated to it to indicate the age of the value. The higher the Transaction ID the newer the value.
+
+Old values are not overwritten, so each row can have multiple values per column.
+
+When reading values, transactions choose the value that has the highest Transaction ID as long as it is less than the current transaction's Transaction ID. This prevents the current transaction from reading another transaction uncommitted values.
+
+Compaction is utilized to remove old values that are no longer needed.
+
+## Read Skew
+
+This is a race condition that occurs when a transaction is doing a batch read, but a concurrent transaction modifies values causing the batch read to be corrupt and a data invariant is broken.
+
+### Example
+
+There are 2 concurrent threads, T1 and T2. T1 is doing a batch read that has a requirement that the values should always add up to a total of $100. To start, lets say `balance1=$40` and `balance2=$60`. The transactions execute in the following order:
+1. T1 reads `balance1=$40`
+2. T2 writes `balance1=$0`
+3. T2 writes `balance2=$100`
+4. T1 reads `balance2=$100`
+5. T2 commits
+6. T1 commits, effectively `balance1=$40` and `balance2=$100`.
+
+T2 updated the balances to be `balance1=$0` and `balance2=$100`, which satifies the data invariant that balances should total $100.
+However, because this update happened while T1 was reading the balances, it appears on T1 as if the balances are `balance1=$40` and `balance2=$100`, totaling $140 and breaking the data invariant.
+
+This can be prevented using snapshot isolation. If T1 had read only read values with a Transaction ID <= itself, the uncommitted values of T2 would not have been read, and the data invariant would not have been broken.
+
+## Write Skew
+
+This is a race condition that occurs when 2 concurrent transactions update fields that independently would be find, but because they happen concurrently they break a data invariant.
+
+### Example
+
+There are 2 concurrent threads, T1 and T2. There is a data invariant stating that 1 manager must be on the clock at all times. At the start, `manager1=active` and `manager2=active`. T1 is trying to clock-out manager1, and T2 is trying to clock-out manager2. The transactions execute in the following order:
+1. T1 checks if there is at least 1 other manager clocked in before clocking out for manager1.
+2. T2 checks if there is at least 1 other manager clocked in before clocking out for manager2.
+3. T1 writes `manager1=inactive`, effectively clocking out for manager1.
+4. T2 writes `manager2=inactive`, effectively clocking out for manager2.
+5. T2 commits
+6. T1 commits
+
+Due to the race condition, both manager1 and manager2 are now both clocked out, and there are no managers clocked in! The data invariant that 1 manager must be clocked in at all times is broken.
+
+This can be prevented with row locking. If T1 had locked all managers, then T2 would not have been able to check if another manager was clocked-in until after T1 had finished clocking out. This would have prevented T2 from clocking out, and the data invariant would not have been broken.
+
+## Phantom Writes
+
+This is a race condition that occurs when 2 concurrent transactions create rows that independently would be find, but because they happen concurrently they break a data invariant.
+
+### Example
+
+There are 2 concurrent threads, T1 and T2. There is a data invariant stating that, at most, only 1 manager user can ever exist. At the start, there are no manager users. T1 is trying to create a manager user, and T2 is trying to create a manager user. The transactions execute in the following order:
+1. T1 checks if a manager user exists, and sees none.
+2. T2 checks if a manager user exists, and sees none.
+3. T1 creates a manager user.
+4. T2 creates a manager user.
+5. T1 commits.
+6. T2 commits.
+
+Due to the race condition, there are now 2 manager users, breaking the data invariant stating that, at most, only 1 manager user can ever exist!
+
+This can be prevented by materializing conflicts. See next section for details.
+
+## Materializing Conflicts
+
+This is used to prevent Phantom Writes. Essentially, any rows that could cause conflicts are pre-populated in the database. This enables transactions to utilize locks when creating new rows that could result in Phantom Writes.
+
+In the prior manager creation example, T1 would have been able to lock the users table, including the non-existent manager user, then proceed with creation once it verified that no managers already exist. This would have prevented T2 from creating a second manager user, thus preventing the broken data invariant.
 
 ## 2 Phase Locking
 Also known as 2PL. This is a Pessimistic Concurrency Control protocol, meaning we will end up pessimistically locking more rows than needed to prevent race conditions.
