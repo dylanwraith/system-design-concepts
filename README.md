@@ -50,6 +50,7 @@ _An educational repository documenting system design studies_
 - [Column Oriented Storage](#column-oriented-storage)
   - [Notable Downsides](#notable-downsides)
   - [Column Compression](#column-compression)
+  - [Predicate Pushdown](#predicate-pushdown)
 
  
 
@@ -329,3 +330,11 @@ Bitmap Encoding or Run Length Encoding are commonly used to represent large sets
 Dictionary Compression is often used when there are repeated string values. Rather than using the string value, a binary value can be assigned to represent the string value, reducing what was 2bytes/character to simply bits.
 
 In extreme cases, compression can enable usage of in-memory storage and CPU caching, greatly improving performance.
+
+### Predicate Pushdown
+
+See Apache Parquet for an example implementation of this.
+
+This adds metrics to data chunks to optimize queries. These can includes helpful values such as max, min, average, sum, etc.
+
+For example, say you are trying to fetch all ages that are greater than 60. This would normally involve doing a linear scan through your database, potentially 1000s of data chunks with 1000s of values in each chunk. However, if your data chunks have the max value stored on them, then you can skip any chunks where the max value is under 60, since you are only fetching values over 60! This can have a huge positive impact on performance if a majority of your users are under 60.
