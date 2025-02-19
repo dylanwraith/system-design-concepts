@@ -1,6 +1,8 @@
 # System Design Concepts
 _An educational repository documenting system design studies_
 
+
+
 ## Table of Contents
 
 - [Database Index Implementations](#database-index-implementations)
@@ -45,6 +47,11 @@ _An educational repository documenting system design studies_
   - [Example](#example-5)
 - [2PL vs SSI](#2pl-vs-ssi)
 - [Actual Serial Execution](#actual-serial-execution)
+- [Column Oriented Storage](#column-oriented-storage)
+  - [Notable Downsides](#notable-downsides)
+  - [Column Compression](#column-compression)
+
+ 
 
 ## Database Index Implementations
 
@@ -57,6 +64,7 @@ Implemented entirely in-memory. Effectively a hash table, where keys are respect
 #### Cons:
 * Poor performance with range queries -- each value in range needs to be individually queried in-memory and scanned on disc.
 * Low memory -- because hashmap is in-memory, we are greatly restricted by how many keys we can index. Once we run out of space, there's not much we can do. Moving hashmap to disc would greatly damper performance.
+
 
 ### LSM Tree / SSTable Index
 LSM tree is self-balancing sorted binary tree storing key and value at each node. It is effectively an in-memory write buffer. A write-ahead log is maintained to make LSM Tree resilient to server failures. Once the tree is full, it is flushed onto disc in the form of an SSTable, populated via in-order traversal of tree.
@@ -77,6 +85,7 @@ Bloom filters are also used to speed up look-up times in SSTables. They help ind
 * Reads are not optimal -- scanning through SSTables on disc is costly, and is most apparent when looking for old key or key that does not exist
 * Background SSTable compaction takes up resources
 
+
 ### B Tree Index
 This index is stored entirely on disc in the format of a tree of blocks. Each block has "n" keys, and "n-1" references. At the bottom block, rather than references, the block contains the keys' respective values. Given target key, traverse through each layer of the tree, and find where key falls in order of block's keys. Take respective reference route to next block, and so on, until key is found (if it exists).
 
@@ -90,6 +99,8 @@ Writes are more costly since they are all on disc. In addition, each block can o
 
 #### Cons:
 * Writes are inefficient -- all writes happen on disc and can cause need for rebalancing of tree which is expensive
+
+
 
 ## A.C.I.D. Transactions
 Good to strive for because they provide high data reliability and integrity. Most of this can be achieved using a write-ahead log, but Isolation is a bit more tricky. It is common to be a bit more relaxed in systems when striving for Isolation.
@@ -105,6 +116,8 @@ Transactions should appear to occur independently of one another. Essentially, p
 
 ### Durability
 Committed writes should never be lost.
+
+
 
 ## Read Committed Isolation
 This level of isolation is acheived by protecting against Dirty Reads and Dirty Writes.
@@ -141,6 +154,8 @@ This race condition would result in the end values being `favoriteFood=pizza` (T
 ##### Row Locking
 If T1 had locked the rows associated to `favoriteFood` and `favoirteColor`, it would have prevented all other transactions from using the row until T1 was complete, whether that be by failure or success and all writes were committed. Effectively, T1 would have executed, committed, then T2 would have executed, committed, and the final result would be all of T2's values being present. This would slow down the system because only one transaction could use a row at a time, but the race conditions would have been prevented.
 
+
+
 ## Snapshot Isolation
 
 This is effectively the process of storing old database values to prevent race conditions.
@@ -156,6 +171,8 @@ Old values are not overwritten, so each row can have multiple values per column.
 When reading values, transactions choose the value that has the highest Transaction ID as long as it is less than the current transaction's Transaction ID. This prevents the current transaction from reading another transaction uncommitted values.
 
 Compaction is utilized to remove old values that are no longer needed.
+
+
 
 ## Read Skew
 
@@ -176,6 +193,8 @@ However, because this update happened while T1 was reading the balances, it appe
 
 This can be prevented using snapshot isolation. If T1 had read only read values with a Transaction ID <= itself, the uncommitted values of T2 would not have been read, and the data invariant would not have been broken.
 
+
+
 ## Write Skew
 
 This is a race condition that occurs when 2 concurrent transactions update fields that independently would be find, but because they happen concurrently they break a data invariant.
@@ -194,6 +213,8 @@ Due to the race condition, both manager1 and manager2 are now both clocked out, 
 
 This can be prevented with row locking. If T1 had locked all managers, then T2 would not have been able to check if another manager was clocked-in until after T1 had finished clocking out. This would have prevented T2 from clocking out, and the data invariant would not have been broken.
 
+
+
 ## Phantom Writes
 
 This is a race condition that occurs when 2 concurrent transactions create rows that independently would be find, but because they happen concurrently they break a data invariant.
@@ -211,6 +232,8 @@ There are 2 concurrent threads, T1 and T2. There is a data invariant stating tha
 Due to the race condition, there are now 2 manager users, breaking the data invariant stating that, at most, only 1 manager user can ever exist!
 
 This can be prevented by materializing conflicts. See next section for details.
+
+
 
 ## Materializing Conflicts
 
@@ -242,6 +265,8 @@ This is essentially the same as predicate locking, except we only account for th
 
 There are trade-offs between predicate locking and index range locking, and each could have its place in a given system. Neither is a clear winner.
 
+
+
 ## Serializable Snapshot Isolation
 Also known as SSI. This is an Optimistic Concurrency Control protocol, meaning we will end up having race conditions that require aborting, rolling back, and retrying transactions more frequently.
 
@@ -257,6 +282,8 @@ Pretend there are 2 transactions running concurrently. They are executed in the 
 4. T1 is aborted, rolled back, and retried
 
 Because T1 was using the stale value `blue`, it needed to abort, roll back, and retry.
+
+
 
 ## 2PL vs SSI
 
@@ -275,3 +302,30 @@ This comes with a huge hit to processing power since concurrency is no longer fe
 * Stored procedures and be utilized to optimize queries, but these are known for being a nightmare to maintain
 
 In general, this is not a common database approach due to its processing limitations
+
+
+
+## Column Oriented Storage
+
+When a database stores row-data, it does so in data chunks that group column data together. So, if a row has 5 columns, data will need to be written to 5 different locations on disc. As a result, data locality is geared towards doing batch queries on a single column for multiple rows.
+
+This is great for things like data analytics. If I wanted to determine the average age of by userbase, I'd be able to quickly fetch all of the age values since they are stored next to each other on-disc.
+
+### Notable Downsides
+
+There are some unique drawbacks to column oriented storage.
+
+1. All columns need to utilize the same sort order.
+Because a row's data is not stored in the same place, the sort order of the data is the only thing that would allow us to fetch an entire row of data.
+2. Writes require writing to multiple places on disc.
+This can be optimized using a LSM Tree with SSTables. A write buffer allows us to optimize writes by performing them in-memory, then doing batch writes to disc when flushing the tree. Flushing the tree will effectively create an SSTable for each column in the rows being batch-written.
+
+### Column Compression
+
+If column values are often repeated, for example a user's `age` is likely a value between 0 and 100, column compression can be used to greatly reduce the amount of data passed over network and stored in the database.
+
+Bitmap Encoding or Run Length Encoding are commonly used to represent large sets of data.
+
+Dictionary Compression is often used when there are repeated string values. Rather than using the string value, a binary value can be assigned to represent the string value, reducing what was 2bytes/character to simply bits.
+
+In extreme cases, compression can enable usage of in-memory storage and CPU caching, greatly improving performance.
