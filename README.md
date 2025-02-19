@@ -44,6 +44,7 @@ _An educational repository documenting system design studies_
 - [Serializable Snapshot Isolation (SSI)](#serializable-snapshot-isolation)
   - [Example](#example-5)
 - [2PL vs SSI](#2pl-vs-ssi)
+- [Actual Serial Execution](#actual-serial-execution)
 
 ## Database Index Implementations
 
@@ -261,3 +262,16 @@ Because T1 was using the stale value `blue`, it needed to abort, roll back, and 
 
 2PL should be used in systems where there is little overlap in transactions, since many rows are locked with this protocol.
 SSI should be used in systems where there is a lot of overlap in transactions, because it is more efficient to rollback and retry transactions than it is to lock resources and have transactions waiting.
+
+## Actual Serial Execution
+
+Check out VoltDB for an example implementation of this.
+
+This is accomplished by restricting your database to a single thread on a single core. Effectively only one transaction can run at a time on your database, completely removing any concerns for race conditions or deadlocks!
+
+This comes with a huge hit to processing power since concurrency is no longer feasible. To counteract this:
+* Data compression can be utilized to minimize the amount of data being passed around and stored
+* Storing data in-memory can greatly speed things up, but you will have limited storage compared to disk
+* Stored procedures and be utilized to optimize queries, but these are known for being a nightmare to maintain
+
+In general, this is not a common database approach due to its processing limitations
