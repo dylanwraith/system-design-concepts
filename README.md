@@ -32,6 +32,9 @@ _An educational repository documenting system design studies_
   - [Race Conditions](#race-conditions)
   - [Predicate Locking](#predicate-locking)
   - [Index Range Locking](#index-range-locking)
+- [Serializable Snapshot Isolation](#serializable-snapshot-isolation)
+  - [Example](#example-2)
+- [2PL vs SSI](#2pl-vs-ssi)
 
 ## Database Index Implementations
 
@@ -129,7 +132,7 @@ This race condition would result in the end values being `favoriteFood=pizza` (T
 If T1 had locked the rows associated to `favoriteFood` and `favoirteColor`, it would have prevented all other transactions from using the row until T1 was complete, whether that be by failure or success and all writes were committed. Effectively, T1 would have executed, committed, then T2 would have executed, committed, and the final result would be all of T2's values being present. This would slow down the system because only one transaction could use a row at a time, but the race conditions would have been prevented.
 
 ## 2 Phase Locking
-This is a Pessimistic Concurrency Control protocol, meaning we will end up pessimistically locking more rows than needed to prevent race conditions.
+Also known as 2PL. This is a Pessimistic Concurrency Control protocol, meaning we will end up pessimistically locking more rows than needed to prevent race conditions.
 
 This is implemented using 2 locks per resource:
 1. A shared reader lock. This can be used by multiple transactions at once, helping optimize reads. As long as the row is not being written to, reads can occur.
@@ -151,3 +154,24 @@ Because locks are expensive, and we are locking more rows than needed, this can 
 This is essentially the same as predicate locking, except we only account for the indexed portion of the predicate. So, say only `type` was indexed in the prior example, we would end up locking all rows where `type=manager`, regardless of their `shift` value. This will result in more rows being locked, but they are locked much more quickly because the rows are indexed. Essentially, lookups are done in logarithmic time rather than linear time.
 
 There are trade-offs between predicate locking and index range locking, and each could have its place in a given system. Neither is a clear winner.
+
+## Serializable Snapshot Isolation
+Also known as SSI. This is an Optimistic Concurrency Control protocol, meaning we will end up having race conditions that require aborting, rolling back, and retrying transactions more frequently.
+
+This is implemented using Snapshot Isolation to keep track of when a transaction is using an old version of a value.
+
+Whenever a transaction is using an old version of a value, ie a concurrent transaction updated and commited a value used by another transaction, the transaction using the stale value is aborted, rolled back, and retried.
+
+### Example
+Pretend there are 2 transactions running concurrently. They are executed in the following order:
+1. T1 reads `favoriteColor=blue`
+2. T2 updates `favoriteColor=green`
+3. T2 commits
+4. T1 is aborted, rolled back, and retried
+
+Because T1 was using the stale value `blue`, it needed to abort, roll back, and retry.
+
+## 2PL vs SSI
+
+2PL should be used in systems where there is little overlap in transactions, since many rows are locked with this protocol.
+SSI should be used in systems where there is a lot of overlap in transactions, because it is more efficient to rollback and retry transactions than it is to lock resources and have transactions waiting.
